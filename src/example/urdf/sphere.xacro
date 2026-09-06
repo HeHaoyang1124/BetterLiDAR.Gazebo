@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<sdf version="1.6" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <model name="sphere" canonical_link="link">
+
+    <xacro:property name="radius"   value="0.5" />
+    <xacro:property name="mass"     value="1.0" />
+
+    <link name="link">
+      <inertial>
+        <mass>${mass}</mass>
+        <inertia>
+          <ixx>0.01</ixx>
+          <iyy>0.01</iyy>
+          <izz>0.01</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry>
+          <sphere>
+            <radius>${radius}</radius>
+          </sphere>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <sphere>
+            <radius>${radius}</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.2 0.6 1.0 1</ambient>
+          <diffuse>0.2 0.6 1.0 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+        </material>
+      </visual>
+    </link>
+
+    <static>true</static>
+  </model>
+</sdf>
