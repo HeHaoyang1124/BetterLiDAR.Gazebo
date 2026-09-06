@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<sdf version="1.6" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <model name="AT128P" canonical_link="base_link">
+
+    <plugin name="blgz::BetterLidar" filename="better_lidar">
+      <hz_samples>1200</hz_samples>
+      <vt_samples>128</vt_samples>
+      <hz_min_angle>-1.047197551</hz_min_angle>
+      <hz_max_angle>1.047197551</hz_max_angle>
+      <vt_min_angle>-0.221657</vt_min_angle>
+      <vt_max_angle>0.221657</vt_max_angle>
+      <range_min>0.5</range_min>
+      <range_max>200.0</range_max>
+      <update_rate>1000</update_rate>
+      <max_intensity>255.0</max_intensity>
+      <reflectance>0.3</reflectance>
+      <atmos_atten>0.0</atmos_atten>
+      <sys_efficiency>0.9</sys_efficiency>
+      <range_noise_std>0.02</range_noise_std>
+      <intensity_noise_std>0.02</intensity_noise_std>
+      <output_topic>/lidar/points</output_topic>
+      <frame_id>world</frame_id>
+    </plugin>
+
+    <link name="base_link">
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.000166667</ixx>
+          <iyy>0.000166667</iyy>
+          <izz>0.000166667</izz>
+        </inertia>
+      </inertial>
+
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>0.1 0.1 0.1</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.1 0.1 0.1</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+    </link>
+    <static>true</static>
+
+  </model>
+</sdf>
