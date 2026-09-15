@@ -5,6 +5,7 @@
 
 #include <dlfcn.h>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <iostream>
 #include <fstream>
@@ -193,7 +194,10 @@ namespace blgz {
         if (resultTex_) glDeleteTextures(1, &resultTex_);
         if (depthRb_)   glDeleteRenderbuffers(1, &depthRb_);
         if (fbo_)       glDeleteFramebuffers(1, &fbo_);
+        if (pbo_[0] || pbo_[1]) glDeleteBuffers(2, pbo_);
         // clang-format on
+
+        pbo_[0] = pbo_[1] = 0;
 
         eglMakeCurrent(eglDisplay_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         if (eglContext_ != EGL_NO_CONTEXT) eglDestroyContext(eglDisplay_, eglContext_);
@@ -444,6 +448,66 @@ namespace blgz {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         return resultData;
+    }
+
+    void GlRenderer::ReadRenderResultInto(std::vector<float> &buffer,
+                                          const int width,
+                                          const int renderHeight) const {
+        const size_t needed = static_cast<size_t>(width * renderHeight) * 4;
+        if (buffer.size() != needed) buffer.resize(needed);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glReadPixels(0, 0, width, renderHeight, GL_RGBA, GL_FLOAT, buffer.data());
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    bool GlRenderer::CreatePBOs(const int width, const int renderHeight) {
+        pboSize_ = width * renderHeight * 4 * static_cast<int>(sizeof(float));
+        glGenBuffers(2, pbo_);
+        for (int i = 0; i < 2; ++i) {
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo_[i]);
+            glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(pboSize_),
+                         nullptr, GL_STREAM_READ);
+        }
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        pboFirstFrame_ = true;
+        pboWriteIdx_ = 0;
+        return true;
+    }
+
+    void GlRenderer::StartAsyncReadback(const int width, const int renderHeight) {
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo_[pboWriteIdx_]);
+        glReadPixels(0, 0, width, renderHeight, GL_RGBA, GL_FLOAT, 0);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        pboWriteIdx_ = 1 - pboWriteIdx_;
+    }
+
+    bool GlRenderer::FinishAsyncReadbackInto(std::vector<float> &buffer,
+                                             const int width,
+                                             const int renderHeight) {
+        if (pboFirstFrame_) {
+            pboFirstFrame_ = false;
+            return false;
+        }
+
+        const int readIdx = pboWriteIdx_;
+        const size_t needed = static_cast<size_t>(width * renderHeight) * 4;
+        if (buffer.size() != needed) buffer.resize(needed);
+
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo_[readIdx]);
+        const void *mapped = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,
+                                              static_cast<GLsizeiptr>(pboSize_),
+                                              GL_MAP_READ_BIT);
+        if (mapped) {
+            std::memcpy(buffer.data(), mapped, static_cast<size_t>(pboSize_));
+            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        }
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        return mapped != nullptr;
     }
 
     GLuint GlRenderer::CompileShader(const GLenum type, const char *src) {

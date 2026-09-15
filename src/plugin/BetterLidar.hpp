@@ -70,7 +70,7 @@ private:
     double rangeMax_    = 0.0;
     double updateRate_  = 0.0;
     std::chrono::nanoseconds updatePeriod_{0};
-    std::chrono::nanoseconds lastRenderTime_{0};
+    std::chrono::nanoseconds lastPublishTime_{0};
     double maxIntensity_ = 0.0;
     double reflectance_  = 0.0;
     double atmosAtten_   = 0.0;
@@ -83,6 +83,11 @@ private:
     gz::transport::Node node_;
     gz::transport::Node::Publisher pub_;
     std::string outputTopic_ = "/lidar/points";
+
+    std::vector<float> resultBuffer_;
+    gz::msgs::PointCloudPacked cachedMsg_;
+    bool msgLayoutInitialized_ = false;
+    bool dataReady_ = false;
 
     StageTimer timer_;
 };

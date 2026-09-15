@@ -49,6 +49,11 @@ public:
     void SetNoiseParams(double rangeNoiseStd, double intensityNoiseStd);
     
     std::vector<float> ReadRenderResult(int width, int renderHeight) const;
+    void ReadRenderResultInto(std::vector<float> &buffer, int width, int renderHeight) const;
+
+    bool CreatePBOs(int width, int renderHeight);
+    void StartAsyncReadback(int width, int renderHeight);
+    bool FinishAsyncReadbackInto(std::vector<float> &buffer, int width, int renderHeight);
 
     int GetFrameBufferWidth() const { return fbWidth_; }
     int GetRenderHeight() const { return renderHeight_; }
@@ -111,6 +116,11 @@ private:
         Entity entity;
     };
     std::vector<Renderable> renderables_;
+
+    GLuint pbo_[2] = {0, 0};
+    int pboWriteIdx_ = 0;
+    bool pboFirstFrame_ = true;
+    int pboSize_ = 0;
 };
 
 } // namespace blgz

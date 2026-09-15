@@ -56,6 +56,13 @@ namespace blgz {
             return;
         }
 
+        if (!renderer_.CreatePBOs(fbWidth_, fbHeight_)) {
+            gzerr << "BetterLidar: Failed to create PBOs" << std::endl;
+            return;
+        }
+
+        resultBuffer_.resize(static_cast<size_t>(fbWidth_ * fbHeight_) * 4);
+
         std::string shaderDir = std::string(SHADER_DIR) + "/";
         if (!renderer_.LoadAndCompileShaders(shaderDir)) {
             gzerr << "BetterLidar: Failed to compile shaders" << std::endl;
@@ -85,9 +92,6 @@ namespace blgz {
         if (_info.paused) return;
         if (lidarEntity_ == kNullEntity) return;
 
-        if (_info.simTime - lastRenderTime_ < updatePeriod_) return;
-        lastRenderTime_ = _info.simTime;
-
         timer_.Begin(Stage::Work);
 
         if (!geometriesCollected_) {
@@ -107,11 +111,23 @@ namespace blgz {
                               frameCounter_++);
         timer_.End(Stage::Render);
 
-        GenerateAndPublish(lidarPose, _info.simTime);
+        timer_.Begin(Stage::GpuTransfer);
+        renderer_.StartAsyncReadback(fbWidth_, fbHeight_);
+        timer_.End(Stage::GpuTransfer);
+
+        timer_.Begin(Stage::Readback);
+        if (renderer_.FinishAsyncReadbackInto(resultBuffer_, fbWidth_, fbHeight_)) {
+            dataReady_ = true;
+        }
+        timer_.End(Stage::Readback);
+
+        if (dataReady_ && _info.simTime - lastPublishTime_ >= updatePeriod_) {
+            lastPublishTime_ = _info.simTime;
+            GenerateAndPublish(lidarPose, _info.simTime);
+            timer_.TickFrame();
+        }
 
         timer_.End(Stage::Work);
-
-        timer_.TickFrame();
 
         if (timer_.ShouldPrint()) {
             timer_.PrintAndReset();
@@ -124,71 +140,48 @@ namespace blgz {
         const int h = fbHeight_;
         const int totalOutput = w * h;
 
-        timer_.Begin(Stage::Readback);
-        std::vector<float> resultData = renderer_.ReadRenderResult(w, h);
-        timer_.End(Stage::Readback);
-
         timer_.Begin(Stage::MsgBuild);
 
-        gz::msgs::PointCloudPacked msg;
+        auto &msg = cachedMsg_;
 
-        auto *header = msg.mutable_header();
-        auto *stamp = header->mutable_stamp();
+        if (!msgLayoutInitialized_) {
+            msg.set_height(h);
+            msg.set_width(w);
+
+            auto addField = [&](const std::string &name, uint32_t offset,
+                                gz::msgs::PointCloudPacked::Field::DataType dtype) {
+                auto *f = msg.add_field();
+                f->set_name(name);
+                f->set_offset(offset);
+                f->set_datatype(dtype);
+                f->set_count(1);
+            };
+
+            addField("x", 0, gz::msgs::PointCloudPacked::Field::FLOAT32);
+            addField("y", 4, gz::msgs::PointCloudPacked::Field::FLOAT32);
+            addField("z", 8, gz::msgs::PointCloudPacked::Field::FLOAT32);
+            addField("intensity", 12, gz::msgs::PointCloudPacked::Field::FLOAT32);
+
+            msg.set_point_step(16);
+            msg.set_row_step(16 * static_cast<uint32_t>(w));
+            msg.set_is_bigendian(false);
+            msg.set_is_dense(false);
+
+            auto *dataField = msg.mutable_header()->add_data();
+            dataField->set_key("frame_id");
+            dataField->add_value(frameId_);
+
+            msgLayoutInitialized_ = true;
+        }
+
         auto sec = std::chrono::duration_cast<std::chrono::seconds>(simTime);
         auto nsec = simTime - sec;
-        stamp->set_sec(static_cast<int64_t>(sec.count()));
-        stamp->set_nsec(static_cast<int32_t>(nsec.count()));
-        auto *dataField = header->add_data();
-        dataField->set_key("frame_id");
-        dataField->add_value(frameId_);
+        msg.mutable_header()->mutable_stamp()->set_sec(static_cast<int64_t>(sec.count()));
+        msg.mutable_header()->mutable_stamp()->set_nsec(static_cast<int32_t>(nsec.count()));
 
-        msg.set_height(h);
-        msg.set_width(w);
-
-        auto addField = [&](const std::string &name, uint32_t offset,
-                            gz::msgs::PointCloudPacked::Field::DataType dtype) {
-            auto *f = msg.add_field();
-            f->set_name(name);
-            f->set_offset(offset);
-            f->set_datatype(dtype);
-            f->set_count(1);
-        };
-
-        addField("x", 0, gz::msgs::PointCloudPacked::Field::FLOAT32);
-        addField("y", 4, gz::msgs::PointCloudPacked::Field::FLOAT32);
-        addField("z", 8, gz::msgs::PointCloudPacked::Field::FLOAT32);
-        addField("intensity", 12, gz::msgs::PointCloudPacked::Field::FLOAT32);
-
-        const uint32_t pointStep = 16;
-        msg.set_point_step(pointStep);
-        msg.set_row_step(pointStep * static_cast<uint32_t>(w));
-        msg.set_is_bigendian(false);
-        msg.set_is_dense(false);
-
-        msg.mutable_data()->resize(static_cast<size_t>(totalOutput) * pointStep);
-        auto *raw = msg.mutable_data()->data();
-
-        for (int row = 0; row < h; ++row) {
-            for (int col = 0; col < w; ++col) {
-                const uint32_t base = static_cast<uint32_t>(row * w + col) * pointStep;
-
-                const int idx = (row * w + col) * 4;
-                const float posX = resultData[idx + 0];
-                const float posY = resultData[idx + 1];
-                const float posZ = resultData[idx + 2];
-                const float intensity = resultData[idx + 3];
-
-                if (posX == 0.0f && posY == 0.0f && posZ == 0.0f && intensity == 0.0f) {
-                    std::memset(raw + base, 0, pointStep);
-                    continue;
-                }
-
-                std::memcpy(raw + base + 0, &posX, sizeof(float));
-                std::memcpy(raw + base + 4, &posY, sizeof(float));
-                std::memcpy(raw + base + 8, &posZ, sizeof(float));
-                std::memcpy(raw + base + 12, &intensity, sizeof(float));
-            }
-        }
+        const size_t dataSize = static_cast<size_t>(totalOutput) * 16;
+        msg.mutable_data()->resize(dataSize);
+        std::memcpy(msg.mutable_data()->data(), resultBuffer_.data(), dataSize);
 
         timer_.End(Stage::MsgBuild);
 
