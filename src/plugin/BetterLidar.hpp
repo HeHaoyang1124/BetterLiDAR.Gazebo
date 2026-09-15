@@ -70,7 +70,7 @@ private:
     double rangeMax_    = 0.0;
     double updateRate_  = 0.0;
     std::chrono::nanoseconds updatePeriod_{0};
-    std::chrono::nanoseconds lastPublishTime_{0};
+    std::chrono::nanoseconds lastRenderTime_{0};
     double maxIntensity_ = 0.0;
     double reflectance_  = 0.0;
     double atmosAtten_   = 0.0;
@@ -87,7 +87,7 @@ private:
     std::vector<float> resultBuffer_;
     gz::msgs::PointCloudPacked cachedMsg_;
     bool msgLayoutInitialized_ = false;
-    bool dataReady_ = false;
+    std::chrono::nanoseconds prevSimTime_{0};
 
     StageTimer timer_;
 };

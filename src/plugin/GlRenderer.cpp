@@ -494,7 +494,7 @@ namespace blgz {
             return false;
         }
 
-        const int readIdx = pboWriteIdx_;
+        const int readIdx = 1 - pboWriteIdx_;
         const size_t needed = static_cast<size_t>(width * renderHeight) * 4;
         if (buffer.size() != needed) buffer.resize(needed);
 

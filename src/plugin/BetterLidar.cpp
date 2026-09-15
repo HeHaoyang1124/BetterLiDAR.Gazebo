@@ -92,6 +92,9 @@ namespace blgz {
         if (_info.paused) return;
         if (lidarEntity_ == kNullEntity) return;
 
+        if (_info.simTime - lastRenderTime_ < updatePeriod_) return;
+        lastRenderTime_ = _info.simTime;
+
         timer_.Begin(Stage::Work);
 
         if (!geometriesCollected_) {
@@ -106,28 +109,25 @@ namespace blgz {
         auto lidarPose = worldPose(lidarEntity_, _ecm);
         timer_.End(Stage::Pose);
 
+        timer_.Begin(Stage::Readback);
+        bool hasData = renderer_.FinishAsyncReadbackInto(resultBuffer_, fbWidth_, fbHeight_);
+        timer_.End(Stage::Readback);
+
+        if (hasData) {
+            GenerateAndPublish(lidarPose, prevSimTime_);
+        }
+
         timer_.Begin(Stage::Render);
         renderer_.RenderScene(lidarPose, _ecm, maxIntensity_, reflectance_, atmosAtten_, sysEfficiency_,
                               frameCounter_++);
         timer_.End(Stage::Render);
 
-        timer_.Begin(Stage::GpuTransfer);
         renderer_.StartAsyncReadback(fbWidth_, fbHeight_);
-        timer_.End(Stage::GpuTransfer);
-
-        timer_.Begin(Stage::Readback);
-        if (renderer_.FinishAsyncReadbackInto(resultBuffer_, fbWidth_, fbHeight_)) {
-            dataReady_ = true;
-        }
-        timer_.End(Stage::Readback);
-
-        if (dataReady_ && _info.simTime - lastPublishTime_ >= updatePeriod_) {
-            lastPublishTime_ = _info.simTime;
-            GenerateAndPublish(lidarPose, _info.simTime);
-            timer_.TickFrame();
-        }
+        prevSimTime_ = _info.simTime;
 
         timer_.End(Stage::Work);
+
+        timer_.TickFrame();
 
         if (timer_.ShouldPrint()) {
             timer_.PrintAndReset();

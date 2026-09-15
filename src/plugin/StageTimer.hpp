@@ -13,7 +13,6 @@ namespace blgz {
         Pose,
         Render,
         Readback,
-        GpuTransfer,
         MsgBuild,
         Publish,
         Work,
@@ -23,7 +22,7 @@ namespace blgz {
     inline const char *StageName(Stage s) {
         static const char *names[] = {
             "collect", "pose", "render",
-            "readback", "gpuXfer", "msgBuild", "publish", "work"
+            "readback", "msgBuild", "publish", "work"
         };
         return names[static_cast<int>(s)];
     }
